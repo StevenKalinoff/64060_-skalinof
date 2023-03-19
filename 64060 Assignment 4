@@ -1,0 +1,212 @@
+---
+title: "Assignment 4 K-means"
+author: "Steven Kalinoff"
+date: "2023-03-15"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Install}
+# ctl + shift + c to uncomment block for intial install of packages.
+# install.packages("class")
+# install.packages("caret")
+# install.packages("readr")
+# install.packages("e1071")
+# install.packages("reshape")
+# install.packages("reshape2")
+# install.packages("dplyr")
+# install.packages("Stats")
+# install.packages("ISLR")
+# install.packages("gmodels")
+# install.packages("fastDummies")
+# install.packages("stats")
+# install.packages("ggplot2")
+# install.packages("ggfortify")
+# install.packages("factoextra")
+# install.packages("cluster")
+# install.packages("gridExtra")
+# install.packages("tidyr")
+# install.packages("rlang")
+# install.packages("colorspace")
+# install.packages("corrplot")
+# install.packages("ggpubr")
+```
+
+```{r load}
+# remove.packages(c("ggplot2", "data.table"))
+# install.packages('Rcpp', dependencies = TRUE)
+# install.packages('ggplot2', dependencies = TRUE)
+# install.packages('data.table', dependencies = TRUE)
+library(class)
+library(caret)
+library(readr)
+library(e1071)
+library(reshape)
+library(reshape2)
+library(dplyr)
+library(stats)
+library(ISLR)
+library(gmodels)
+library(ggplot2)
+library(lattice)
+library(fastDummies)
+library(readxl)
+library(stats)
+
+library(ggfortify)
+library(factoextra)
+library(cluster)
+library(gridExtra)
+library(tidyr)
+library(Rcpp)
+library(corrplot)
+library(ggpubr)
+
+
+```
+
+```{r run}
+getwd()
+PH = read.csv("Pharm.csv")
+head(PH)
+
+# creating a new df with col 1-9
+PH1 = PH[,2:(ncol(PH)-3)]
+PH1
+#Clustering data 
+.libPaths()
+##Scaling Data
+PH1[,-1] = scale(PH1[,-1])
+PH1norm = PH1
+```
+
+
+```{r group k}
+set.seed(1)
+##Using an elbow graph to establish idle clusters from data. 
+
+# in order for this method to work we must assign a df that contains only numeric non N/A values so PH1norm was created for this purpose.
+PHdata = PH1norm[,-1]
+
+# in any K-means our extremes are 1 cluster to x where every nrow has its own cluster. This step could be automated with a function that finds the elbow by looking for the greatest change of a negative slope to a flat slope in the curve running point to point. 
+wcss = vector()
+for (i in 1:20) {
+  kmeans_model <- kmeans(PHdata[, 1:9], centers = i)
+  wcss[i] <- kmeans_model$tot.within
+}
+
+# plot WCSS vs number of clusters
+## finding the best K allows us to quickly 
+
+ggplot(data = data.frame(Clusters = 1:20, WCSS = wcss), 
+       aes(x = Clusters, y = WCSS)) +
+        geom_point() +
+        geom_line() +
+        labs(x = "No. of clusters", y = "WCSS") +
+  # this part of the code would be replaced with a variable and once the previous automated code finds the greatest change then it could be called here for a visual indicator. 
+        geom_vline(xintercept = 2, linetype = "dashed") 
+```
+
+```{r individual k }
+set.seed(1) 
+PHdata = PH1norm[,-1]
+
+# lets further look into each of the variables to see if any 1 has a k other than 
+# for ideal clusters...
+plots <- list()
+
+# loop through each variable in the data frame and generate an elbow plot
+for (col in colnames(PHdata)) {
+  wss <- numeric()
+  for (k in 1:5) 
+    {
+    km <- kmeans(PHdata[, col], centers = k, nstart = 8)
+    wss[k] <- km$tot.withinss
+    }
+  
+  # create elbow plot, since 2 ideal shrinking the range i.e. 1:5 will help visually
+  # confirm the the best k. 
+  plot = ggplot(data.frame(k = 1:5, wss = wss), aes(x = k, y = wss)) + 
+    geom_line() +
+    scale_x_continuous(breaks = 1:5) +
+    labs(title = col) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+             geom_vline(xintercept = 2, linetype = "dashed")
+  
+  # add plot to list
+  plots[[col]] = plot
+}
+
+# combine plots into a single plot
+grid.arrange(grobs = plots, ncol = 3)
+# we can confidently say that 2 is the ideal k value in this problem.
+```
+
+```{r}
+fviz_cluster(kmeans(PHdata, centers = 2, iter.max = 100, nstart = 100), data = PHdata)
+```
+
+```{r code given}
+Pattern <- PH %>% select(c(12,13,14)) %>% mutate(Cluster = kmeans_model$cluster)
+print(Pattern)
+Median_Recommenation <- ggplot(Pattern, mapping = aes(factor(Cluster), fill=Median_Recommendation)) + geom_bar(position = 'dodge') + labs(x='Clusters', y='Frequence')
+Median_Recommenation
+
+```
+
+```{r}
+# part b: after looking into the data and the descriptive cols (10-12) 2 groups do not appear to be enough to aquatically sort the data into meaningful groups. k =2 is not the only no. we can use but we will start to get diminishing results if more clusters are used toward the point of over fitting and while the ind plots have a clear elbow at 2 holistically the k can be increased for a better look groups. 
+
+# K, when looking at the last 3 col location of company and what exchange are most like circumstantial and have little to no impact on the company 3rd category the Median_Recommendation. We will use K = no. of rec = 4 for our next attempt at clustering the data effectively. 
+fviz_cluster(kmeans(PHdata, centers = 4, iter.max = 100, nstart = 100), data = PHdata)
+#assigning cluster no. to the df
+
+k = 4
+
+model = kmeans(PHdata,k)
+
+clusterlabels = model$cluster
+
+PH$cluster = clusterlabels
+
+PHdata$cluster = clusterlabels
+
+corr_matrix = cor(PHdata[,1:10])
+
+corrplot(corr_matrix, method = "color", type = "full", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+# furthering our analysis we see that 4 largest variables in the median_rec are the Mkt Cap, Net profit mrg, ROE, & ROA. 
+#Our last round of analysis will focus on this knowledge and our best k value ~ 3.
+```
+
+```{r}
+PHlast = PH1norm[c("ROE","ROA","Net_Profit_Margin")]
+
+
+
+fviz_cluster(kmeans(PHlast, centers = 3, iter.max = 10, nstart = 1), data = PHlast)
+k = 3
+
+model2 = kmeans(PHlast,k)
+
+CL2 = model2$cluster
+
+PH$clust2 = CL2
+
+PHdata$CL2 = CL2
+
+#Simply put the cluster analysis can be used to attempt to group the companies vs their buy hold or sell rating based on the companies finical stats. 
+## Group 3 is a  buy and/or hold 
+## Group 2 is a mixed bag or a diversify investment choice in the middle of the road with market shares likely to stay stable. 
+## Group 1 is for the buyers with Strong buys and hold with indication of the market shares to grow. 
+```
+
+
+
+
