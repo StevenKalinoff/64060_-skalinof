@@ -1,0 +1,194 @@
+---
+title: "Assignment 5"
+author: "Steven Kalinoff"
+date: "2023-04-11"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages("tidyverse")
+#install.packages(cluster)
+#install.packages("factoextra")
+#install.packages("dendextend")
+```
+
+```{r}
+library('tidyverse')
+library(cluster)    
+library(factoextra) 
+library(dendextend) 
+```
+
+```{r}
+#1
+cereal = read.csv("cereals.csv")
+# per instructions removing any entry with incomplete values
+cereal_NA = na.omit(cereal)
+row.names(cereal_NA)= c(cereal_NA$name)
+cereal_NA = cereal_NA[,-(1:3)]
+
+# this is done as different units for all the attributes of the cereals need to be ignored also we will be using the eucldidian method whcih requires the data to be scaled. 
+scaledcereal = scale(cereal_NA)
+
+# determining which method is the most acc. 
+d0=dist(scaledcereal)
+
+#2
+# Hierarchical clustering using listed Linkages (Visual)
+d1 = dist(scaledcereal, method = "euclidean")
+
+hc1 = hclust(d1, method = "average" )
+  plot(hc1, cex = 0.6, hang = -1)
+    d1 = dist(scaledcereal, method = "euclidean")
+    
+hc2 = hclust(d1, method = "single" )
+  plot(hc2, cex = 0.6, hang = -1)
+    d2 = dist(scaledcereal, method = "euclidean")
+    
+hc3 = hclust(d1, method = "complete" )
+  plot(hc3, cex = 0.6, hang = -1)
+    d3 = dist(scaledcereal, method = "euclidean")
+    
+hc4 = hclust(d1, method = "ward.D2" )
+  plot(hc4, cex = 0.6, hang = -1)
+    d4 = dist(scaledcereal, method = "euclidean")
+    
+#Anges to compare values
+hc1 = agnes(scaledcereal, method = "average")
+hc2 = agnes(scaledcereal, method = "single")
+hc3 = agnes(scaledcereal, method = "complete")
+hc4 = agnes(scaledcereal, method = "ward")
+
+hc1$ac #.78
+hc2$ac #.61
+hc3$ac #.84
+hc4$ac #.90, best method to use based on Anges
+```
+    
+```{r}
+#3
+#find best k 
+# Perform k-means clustering to calculate within-cluster sum of squares (wss) for different k values
+wss <- numeric(20)
+for (i in 1:20) {
+  kmeans_model <- kmeans(scaledcereal, centers = i, nstart = 10)
+  wss[i] <- kmeans_model$tot.withinss
+}
+
+# Plot the wss values
+plot(1:20, wss, type = "b", xlab = "Number of Clusters", ylab = "Within-cluster Sum of Squares")
+
+# k=6 seems to be a reasonable choice to run the analysis
+```
+
+```{r}
+# data partitioning
+scaledcereal_6 = cutree(hc4,k=6)
+Clustered_df = as.data.frame(cbind(scaledcereal,scaledcereal_6))
+
+df_A = scaledcereal[1:55,]
+df_B = scaledcereal[56:74,]
+```
+
+```{r}
+#section vars
+d1 = dist(df_A, method = "euclidean")
+hc_A = hclust(d1, method = "ward.D2")
+border_colors_A = rainbow(6)
+
+# Plot hierarchical clustering for partition A with boxes around clusters
+plot(hc_A, cex = 0.6, hang = -1)
+  rect.hclust(hc_A, k = 6, border = border_colors_A)
+    legend("bottom", legend = paste0("Cluster ", 1:6), col = border_colors_A, lty = 1, bty = 6, pch = 15, ncol = 6, cex = .8)
+
+# Perform hierarchical clustering on partition B
+d2 = dist(df_B, method = "euclidean")
+hc_B = hclust(d2, method = "ward.D2")
+
+# Plot hierarchical clustering for partition B with boxes around clusters
+plot(hc_B, cex = 0.6, hang = -1)
+  rect.hclust(hc_B, k = 6, border = border_colors_A)
+    legend("bottom", legend = paste0("Cluster ", 1:6), col = border_colors_A, lty = 1, bty = 6, pch = 15, ncol = 6, cex = .8)
+```
+
+```{r}
+df_A_distance <- dist(df_A, method = "euclidean")
+
+# Perform hierarchical clustering on partition A
+hc_A <- hclust(df_A_distance, method = "ward.D2")
+
+# Hierarchical clustering for partition A
+plot(hc_A, cex = 0.6, hang = -1)
+
+# Cut the tree and obtain cluster assignments for partition A
+Clustered_df_A <- cutree(hc_A, k = 6)  
+
+# Convert cluster assignments to a data frame
+Clusters_A <- as.data.frame(cbind(df_A, Clustered_df_A))
+
+# Identify clusters in partition A
+Clust.1 <- colMeans(Clusters_A[Clusters_A$Clustered_df_A == 1, ])  
+Centroid <- rbind(Clust.1)
+```
+
+```{r}
+# Calculate distances between records in partition B and cluster centroids from partition A
+distances = dist(rbind(df_B, hc_A$centers), method = "euclidean")[1:6]
+Matrix_1 = as.matrix(distances)
+Clustered_df_B <- numeric(length = nrow(df_B))
+
+
+for (i in 1:length(Clustered_df_B)) 
+{
+  if (length(unique(distances)) > 1) {
+    Clustered_df_B[i] <- which.min(distances)
+} 
+  else 
+{
+Clustered_df_B[i] <- 1
+}
+distances = distances[-which.min(distances)]
+}
+
+# Convert cluster assignments to factor for consistency with partition A
+Clustered_df_B = as.factor(Clustered_df_A)
+
+dataframe1 <- data.frame(data = seq(1, nrow(df_B), 1), Clusters = rep(0, nrow(df_B)))
+
+for (i in 1:nrow(df_B)) {
+  dataframe1$Clusters[i] <- which.min(Matrix_1[ 1:6])
+}
+
+dataframe1
+
+cluster1 <- cutree(hc4, k = 6)
+dataframe2 <- as.data.frame(cbind(scaledcereal, cluster1))
+
+cbind(dataframe2$Cluster1[51:74], dataframe1$Clusters)
+table(dataframe2$Cluster1[51:74] == dataframe1$Clusters)
+```
+
+```{r}
+#attempting to test data consistency 
+dataframe1 <- data.frame(data=seq(1, nrow(df_B), 1), Clusters = rep(0, nrow(df_B)))
+
+for (i in 1:nrow(df_B)) 
+{
+  dataframe1[i, 2] = which.min(Matrix_1[1:6])
+}
+
+
+
+dataframe1
+cluster1 = cutree(hc4, k=6)
+dataframe2 = as.data.frame(cbind(scaledcereal,cluster1))
+
+cbind(dataframe2$Cluster1[51:74], dataframe1$Clusters)
+table(dataframe2$Cluster1[51:74] == dataframe1$Clusters)
+```
